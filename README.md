@@ -18,7 +18,8 @@ Tensorflow implementation of [Deep Convolutional Generative Adversarial Networks
 ## Prerequisites
 
 - Python 2.7 or Python 3.3+
-- [Tensorflow 0.12.1](https://github.com/tensorflow/tensorflow/tree/r0.12)
+- cuda10.0
+- [Tensorflow 1.13.1](https://github.com/tensorflow/tensorflow/tree/r0.12)
 - [SciPy](http://www.scipy.org/install.html)
 - [pillow](https://github.com/python-pillow/Pillow)
 - (Optional) [moviepy](https://github.com/Zulko/moviepy) (for visualization)
