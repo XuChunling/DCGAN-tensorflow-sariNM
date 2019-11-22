@@ -3,7 +3,7 @@
 Add a API to transform model to "*.pb" and "*.tflite",these files were save in directories "tflite", command like(this API only test on tensorflow 1.13.1 and cuda 10.0):
 
 
-    $ python main.py --dataset celebA --input_height=108 --train_size=1000 --train --crop -epoch=1 --lite --batch_size=1 
+    $ python main.py --dataset celebA --input_height=108 --train_size=1000 --train --crop --epoch=1 --lite --batch_size=1 
  
 # DCGAN in Tensorflow
 
