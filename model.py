@@ -109,13 +109,11 @@ class DCGAN(object):
     else:
       self.y = None
 
-    # train --> output_size, test --> input_size
     if self.crop:
       image_dims = [self.output_height, self.output_width, self.c_dim]
     else:
       image_dims = [self.input_height, self.input_width, self.c_dim]
 
-    print("-------------------->input shape : ",[self.batch_size],image_dims,[self.batch_size] + image_dims)
     self.inputs = tf.placeholder(
       tf.float32, [self.batch_size] + image_dims, name='real_images')
 
@@ -129,9 +127,13 @@ class DCGAN(object):
     self.D, self.D_logits   = self.discriminator(inputs, self.y, reuse=False)
     self.sampler            = self.sampler(self.z, self.y)
     self.D_, self.D_logits_ = self.discriminator(self.G, self.y, reuse=True)
+    self.D_1, self.D_logits_1 = self.discriminator1(inputs, self.y, reuse=True) # for predict, mod by jiangdh  
+    self.D_2, self.D_logits_2, self.h0, self.h1, self.h2 = self.discriminator_svm(inputs, self.y, reuse=True)# for svm predict, mod by jiangdh
     
     self.d_sum = histogram_summary("d", self.D)
     self.d__sum = histogram_summary("d_", self.D_)
+    self.D_logits_sum = histogram_summary("D_logits", self.D_logits)
+    self.D_logits__sum = histogram_summary("D_logits_", self.D_logits_)    
     self.G_sum = image_summary("G", self.G)
 
     def sigmoid_cross_entropy_with_logits(x, y):
@@ -154,7 +156,8 @@ class DCGAN(object):
 
     self.g_loss_sum = scalar_summary("g_loss", self.g_loss)
     self.d_loss_sum = scalar_summary("d_loss", self.d_loss)
-
+    
+    
     t_vars = tf.trainable_variables()
 
     self.d_vars = [var for var in t_vars if 'd_' in var.name]
@@ -165,7 +168,7 @@ class DCGAN(object):
   def train(self, config):
     d_optim = tf.train.AdamOptimizer(config.learning_rate, beta1=config.beta1) \
               .minimize(self.d_loss, var_list=self.d_vars)
-    g_optim = tf.train.AdamOptimizer(config.learning_rate, beta1=config.beta1) \
+    g_optim = tf.train.AdamOptimizer(config.learning_rate*config.G_rate, beta1=config.beta1) \
               .minimize(self.g_loss, var_list=self.g_vars)
     try:
       tf.global_variables_initializer().run()
@@ -173,11 +176,11 @@ class DCGAN(object):
       tf.initialize_all_variables().run()
 
     if config.G_img_sum:
-      self.g_sum = merge_summary([self.z_sum, self.d__sum, self.G_sum, self.d_loss_fake_sum, self.g_loss_sum])
+      self.g_sum = merge_summary([self.z_sum, self.d__sum, self.G_sum, self.d_loss_fake_sum, self.g_loss_sum, self.D_logits__sum])
     else:
-      self.g_sum = merge_summary([self.z_sum, self.d__sum, self.d_loss_fake_sum, self.g_loss_sum])
+      self.g_sum = merge_summary([self.z_sum, self.d__sum, self.d_loss_fake_sum, self.g_loss_sum, self.D_logits__sum])
     self.d_sum = merge_summary(
-        [self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum])
+        [self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum, self.D_logits_sum])
     self.writer = SummaryWriter(os.path.join(self.out_dir, "logs"), self.sess.graph)
 
     sample_z = gen_random(config.z_dist, size=(self.sample_num , self.z_dim))
@@ -239,7 +242,7 @@ class DCGAN(object):
 
         batch_z = gen_random(config.z_dist, size=[config.batch_size, self.z_dim]) \
               .astype(np.float32)
-
+     
         if config.dataset == 'mnist':
           # Update D network
           _, summary_str = self.sess.run([d_optim, self.d_sum],
@@ -262,7 +265,19 @@ class DCGAN(object):
           _, summary_str = self.sess.run([g_optim, self.g_sum],
             feed_dict={ self.z: batch_z, self.y:batch_labels })
           self.writer.add_summary(summary_str, counter)
-          
+          _, summary_str = self.sess.run([g_optim, self.g_sum],
+            feed_dict={ self.z: batch_z, self.y:batch_labels })
+          self.writer.add_summary(summary_str, counter)
+          _, summary_str = self.sess.run([g_optim, self.g_sum],
+            feed_dict={ self.z: batch_z, self.y:batch_labels })
+          self.writer.add_summary(summary_str, counter)   
+          _, summary_str = self.sess.run([g_optim, self.g_sum],
+            feed_dict={ self.z: batch_z, self.y:batch_labels })
+          self.writer.add_summary(summary_str, counter)
+          _, summary_str = self.sess.run([g_optim, self.g_sum],
+            feed_dict={ self.z: batch_z, self.y:batch_labels })
+          self.writer.add_summary(summary_str, counter)         
+        
           errD_fake = self.d_loss_fake.eval({
               self.z: batch_z, 
               self.y:batch_labels
@@ -290,9 +305,26 @@ class DCGAN(object):
           _, summary_str = self.sess.run([g_optim, self.g_sum],
             feed_dict={ self.z: batch_z })
           self.writer.add_summary(summary_str, counter)
+          if config.G_num > 2 :
+             _, summary_str = self.sess.run([g_optim, self.g_sum],
+                feed_dict={ self.z: batch_z })
+             self.writer.add_summary(summary_str, counter)
+          elif config.G_num > 3 :
+             _, summary_str = self.sess.run([g_optim, self.g_sum],
+                feed_dict={ self.z: batch_z })
+             self.writer.add_summary(summary_str, counter)   
+          elif config.G_num > 4 :
+             _, summary_str = self.sess.run([g_optim, self.g_sum],
+                feed_dict={ self.z: batch_z })
+             self.writer.add_summary(summary_str, counter)
+          elif config.G_num > 5 :
+             _, summary_str = self.sess.run([g_optim, self.g_sum],
+                feed_dict={ self.z: batch_z })
+             self.writer.add_summary(summary_str, counter)
+       
           
           errD_fake = self.d_loss_fake.eval({ self.z: batch_z })
-          errD_real = self.d_loss_real.eval({ self.inputs: batch_images })
+          errD_real = self.d_loss_real.eval({self.inputs: batch_images})
           errG = self.g_loss.eval({self.z: batch_z})
 
         print("[%8d Epoch:[%2d/%2d] [%4d/%4d] time: %4.4f, d_loss: %.8f, g_loss: %.8f" \
@@ -331,8 +363,6 @@ class DCGAN(object):
           self.save(config.checkpoint_dir, counter)
         
         counter += 1
-    #print(config.lite_type)
-    #self.to_lite(config.lite_type)
         
   def discriminator(self, image, y=None, reuse=False):
     with tf.variable_scope("discriminator") as scope:
@@ -346,8 +376,8 @@ class DCGAN(object):
         h3 = lrelu(self.d_bn3(conv2d(h2, self.df_dim*8, name='d_h3_conv')))
         h4 = linear(tf.reshape(h3, [self.batch_size, -1]), 1, 'd_h4_lin')
 
-        return tf.nn.sigmoid(h4), h4
-        #return tf.nn.sigmoid(h4,name='d_out'), h4
+        #return tf.nn.sigmoid(h4), h4
+        return tf.nn.sigmoid(h4,name='d_lite'), h4 # mod by xucl
       else:
         yb = tf.reshape(y, [self.batch_size, 1, 1, self.y_dim])
         x = conv_cond_concat(image, yb)
@@ -364,9 +394,71 @@ class DCGAN(object):
 
         h3 = linear(h2, 1, 'd_h3_lin')
         
-        return tf.nn.sigmoid(h3), h3
-        #return tf.nn.sigmoid(h3,name='d_out_label'), h3 # mod by xucl
+        #return tf.nn.sigmoid(h3), h3
+        return tf.nn.sigmoid(h3,name='d_lite'), h3 # mod by xucl
 
+  def discriminator1(self, image, y=None, reuse=True):
+    with tf.variable_scope("discriminator") as scope:
+      if reuse:
+        scope.reuse_variables()
+
+      if not self.y_dim:
+        h0 = lrelu(conv2d(image, self.df_dim, name='d_h0_conv'))
+        h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim*2, name='d_h1_conv'), train=False))
+        h2 = lrelu(self.d_bn2(conv2d(h1, self.df_dim*4, name='d_h2_conv'), train=False))
+        h3 = lrelu(self.d_bn3(conv2d(h2, self.df_dim*8, name='d_h3_conv'), train=False))
+        h4 = linear(tf.reshape(h3, [self.batch_size, -1]), 1, 'd_h4_lin')
+
+        return tf.nn.sigmoid(h4), h4
+      else:
+        yb = tf.reshape(y, [self.batch_size, 1, 1, self.y_dim])
+        x = conv_cond_concat(image, yb)
+
+        h0 = lrelu(conv2d(x, self.c_dim + self.y_dim, name='d_h0_conv'))
+        h0 = conv_cond_concat(h0, yb)
+
+        h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim + self.y_dim, name='d_h1_conv')))
+        h1 = tf.reshape(h1, [self.batch_size, -1])      
+        h1 = concat([h1, y], 1)
+        
+        h2 = lrelu(self.d_bn2(linear(h1, self.dfc_dim, 'd_h2_lin')))
+        h2 = concat([h2, y], 1)
+
+        h3 = linear(h2, 1, 'd_h3_lin')
+        
+        return tf.nn.sigmoid(h3), h3    
+
+  def discriminator_svm(self, image, y=None, reuse=True):
+    with tf.variable_scope("discriminator") as scope:
+      if reuse:
+        scope.reuse_variables()
+
+      if not self.y_dim:
+        h0 = lrelu(conv2d(image, self.df_dim, name='d_h0_conv'))
+        h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim*2, name='d_h1_conv'), train=False))
+        h2 = lrelu(self.d_bn2(conv2d(h1, self.df_dim*4, name='d_h2_conv'), train=False))
+        h3 = lrelu(self.d_bn3(conv2d(h2, self.df_dim*8, name='d_h3_conv'), train=False))
+        h4 = linear(tf.reshape(h3, [self.batch_size, -1]), 1, 'd_h4_lin')
+
+        return tf.nn.sigmoid(h4), h4, h0, h1, h2
+      else:
+        yb = tf.reshape(y, [self.batch_size, 1, 1, self.y_dim])
+        x = conv_cond_concat(image, yb)
+
+        h0 = lrelu(conv2d(x, self.c_dim + self.y_dim, name='d_h0_conv'))
+        h0 = conv_cond_concat(h0, yb)
+
+        h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim + self.y_dim, name='d_h1_conv')))
+        h1 = tf.reshape(h1, [self.batch_size, -1])      
+        h1 = concat([h1, y], 1)
+        
+        h2 = lrelu(self.d_bn2(linear(h1, self.dfc_dim, 'd_h2_lin')))
+        h2 = concat([h2, y], 1)
+
+        h3 = linear(h2, 1, 'd_h3_lin')
+        
+        return tf.nn.sigmoid(h3), h3, h0, h1, h2
+            
   def generator(self, z, y=None):
     with tf.variable_scope("generator") as scope:
       if not self.y_dim:
@@ -398,9 +490,9 @@ class DCGAN(object):
 
         h4, self.h4_w, self.h4_b = deconv2d(
             h3, [self.batch_size, s_h, s_w, self.c_dim], name='g_h4', with_w=True)
-    
-        return tf.nn.tanh(h4)
-        #return tf.nn.tanh(h4,name='g_out')#mod by xucl
+
+        #return tf.nn.tanh(h4)
+        return tf.nn.tanh(h4,name='g_lite')#mod by xucl
       else:
         s_h, s_w = self.output_height, self.output_width
         s_h2, s_h4 = int(s_h/2), int(s_h/4)
@@ -424,10 +516,10 @@ class DCGAN(object):
             [self.batch_size, s_h2, s_w2, self.gf_dim * 2], name='g_h2')))
         h2 = conv_cond_concat(h2, yb)
 
-        return tf.nn.sigmoid(
-            deconv2d(h2, [self.batch_size, s_h, s_w, self.c_dim], name='g_h3'))
         #return tf.nn.sigmoid(
-        #    deconv2d(h2, [self.batch_size, s_h, s_w, self.c_dim], name='g_h3'),name='g_out_label')#mod by xucl
+        #    deconv2d(h2, [self.batch_size, s_h, s_w, self.c_dim], name='g_h3'))
+        return tf.nn.sigmoid(
+            deconv2d(h2, [self.batch_size, s_h, s_w, self.c_dim], name='g_h3'),name='g_lite')#mod by xucl
 
   def sampler(self, z, y=None):
     with tf.variable_scope("generator") as scope:
@@ -458,7 +550,6 @@ class DCGAN(object):
         h4 = deconv2d(h3, [self.batch_size, s_h, s_w, self.c_dim], name='g_h4')
 
         return tf.nn.tanh(h4)
-        #return tf.nn.tanh(h4,name='s_out')#mod by xucl
       else:
         s_h, s_w = self.output_height, self.output_width
         s_h2, s_h4 = int(s_h/2), int(s_h/4)
@@ -481,7 +572,6 @@ class DCGAN(object):
         h2 = conv_cond_concat(h2, yb)
 
         return tf.nn.sigmoid(deconv2d(h2, [self.batch_size, s_h, s_w, self.c_dim], name='g_h3'))
-        #return tf.nn.sigmoid(deconv2d(h2, [self.batch_size, s_h, s_w, self.c_dim], name='g_h3'),name='s_out_label')#mod by xucl
 
   def load_mnist(self):
     data_dir = os.path.join(self.data_dir, self.dataset_name)
@@ -564,35 +654,6 @@ class DCGAN(object):
       print(" [*] Failed to find a checkpoint")
       return False, 0
 
-  def sess_to_lite(self,lite_type="D"):
-    if lite_type=="D":
-      print("start lite D")
-      #converter_D = tf.lite.TFLiteConverter.from_session(self.sess, [self.inputs], [self.D])
-      converter_D = tf.lite.TFLiteConverter.from_session(self.sess, ['real_images'], ['d'])
-      D_model = converter_D.convert()
-
-      with tf.io.gfile.GFile('D_DCGAN.tflite', mode='wb') as f:
-        f.write(D_model)
-    else:
-      if lite_type=="G":
-        print("start lite G")
-        #converter_G = tf.lite.TFLiteConverter.from_session(self.sess, [self.z], [self.G])
-        converter_G = tf.lite.TFLiteConverter.from_session(self.sess,  ['z'], ['G'])
-        G_model = converter_G.convert()
-
-        with tf.io.gfile.GFile('G_DCGAN.tflite', mode='wb') as f:
-          f.write(G_model)
-      else:
-        if lite_type=="S":
-          print("start lite S")
-          converter_S = tf.lite.TFLiteConverter.from_session(self.sess, [self.z], [self.sampler])
-          S_model = converter_S.convert()
-
-          with tf.io.gfile.GFile('G_S_DCGAN.tflite', mode='wb') as f:
-            f.write(S_model)
-
-        else:
-          print("lite_type should be D/G/S")
 
   def fgraph_to_lite(self,lite_type="D"):
 
@@ -602,40 +663,54 @@ class DCGAN(object):
 
     if lite_type=="D":
       print("------------------------------------>start pb D")
-      
+
       ########## mod by xucl ###########
       gd = self.sess.graph_def
       #for node in gd.node:
       #  print("------->",node.name)
 
       for node in gd.node:
-        print("------->",node.name)            
+        print("------->",node.name,node.op)
         if node.op == 'RefSwitch':
           node.op = 'Switch'
+          print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
           for index in xrange(len(node.input)):
             if 'moving_' in node.input[index]:
               node.input[index] = node.input[index] + '/read'
         elif node.op == 'AssignSub':
           node.op = 'Sub'
+          print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
           if 'use_locking' in node.attr: del node.attr['use_locking']
         elif node.op == 'AssignAdd':
           node.op = 'Add'
+          print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
           if 'use_locking' in node.attr: del node.attr['use_locking']
         elif node.op == 'AssignMovingAvg':
           node.op = 'MovingAvg'
+          print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
           if 'use_locking' in node.attr: del node.attr['use_locking']
+        elif node.op == 'Assign':
+          node.op = 'Identity'
+          print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
+          if 'use_locking' in node.attr: del node.attr['use_locking']
+          if 'validate_shape' in node.attr: del node.attr['validate_shape']
+          if len(node.input) == 2:
+            # input0: ref: Should be from a Variable node. May be uninitialized.
+            # input1: value: The value to be assigned to the variable.
+            node.input[0] = node.input[1]
+            del node.input[1]
       ##################################
 
       #D_fgraph = tf.graph_util.convert_variables_to_constants(self.sess, self.sess.graph_def, output_node_names=['d'])
-      D_fgraph = tf.graph_util.convert_variables_to_constants(self.sess, gd, output_node_names=['d'])
-      
+      D_fgraph = tf.graph_util.convert_variables_to_constants(self.sess, gd, output_node_names=['discriminator/d_lite'])
+
       with tf.io.gfile.GFile('tflite/D_fgraph.pb', mode='wb') as f:
         f.write(D_fgraph.SerializeToString())
         #f.write(D_fgraph)
-      
+
       print("---------------------------------------->start lite D")
-      converter_D = tf.lite.TFLiteConverter.from_frozen_graph('tflite/D_fgraph.pb', ['real_images'], ['d'])
-  
+      converter_D = tf.lite.TFLiteConverter.from_frozen_graph('tflite/D_fgraph.pb', ['real_images'], ['discriminator/d_lite'])
+
       #converter_D.target_ops = [tf.lite.OpsSet.TFLITE_BUILTINS, #use tensorflow lite ops trans
       #                          tf.lite.OpsSet.SELECT_TF_OPS]    #use tensorflow ops trans
       converter_D.allow_custom_ops=True
@@ -654,31 +729,46 @@ class DCGAN(object):
         #  print("------->",node.name)
 
         for node in gd.node:
-          print("------->",node.name)
+          print("------->",node.name,node.op)
           if node.op == 'RefSwitch':
             node.op = 'Switch'
+            print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
             for index in xrange(len(node.input)):
               if 'moving_' in node.input[index]:
                 node.input[index] = node.input[index] + '/read'
           elif node.op == 'AssignSub':
             node.op = 'Sub'
+            print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
             if 'use_locking' in node.attr: del node.attr['use_locking']
           elif node.op == 'AssignAdd':
             node.op = 'Add'
+            print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
             if 'use_locking' in node.attr: del node.attr['use_locking']
           elif node.op == 'AssignMovingAvg':
             node.op = 'MovingAvg'
+            print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
             if 'use_locking' in node.attr: del node.attr['use_locking']
+          elif node.op == 'Assign':
+            node.op = 'Identity'
+            print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
+            if 'use_locking' in node.attr: del node.attr['use_locking']
+            if 'validate_shape' in node.attr: del node.attr['validate_shape']
+            if len(node.input) == 2:
+              # input0: ref: Should be from a Variable node. May be uninitialized.
+              # input1: value: The value to be assigned to the variable.
+              node.input[0] = node.input[1]
+              del node.input[1]
+
       ##################################
 
 
-        G_fgraph = tf.graph_util.convert_variables_to_constants(self.sess, gd, output_node_names=['G'])
+        G_fgraph = tf.graph_util.convert_variables_to_constants(self.sess, gd, output_node_names=['generator/g_lite'])
         with tf.io.gfile.GFile('tflite/G_fgraph.pb', mode='wb') as f:
           f.write(G_fgraph.SerializeToString())
           #f.write(G_fgraph)
 
         print("------------------------------------>start lite G")
-        converter_G = tf.lite.TFLiteConverter.from_frozen_graph('tflite/G_fgraph.pb', ['z'], ['G'])
+        converter_G = tf.lite.TFLiteConverter.from_frozen_graph('tflite/G_fgraph.pb', ['z'], ['generator/g_lite'])
         #converter_G.target_ops = [tf.lite.OpsSet.TFLITE_BUILTINS, #use tensorflow lite ops trans
         #                          tf.lite.OpsSet.SELECT_TF_OPS]    #use tensorflow ops trans
         converter_G.allow_custom_ops=True
@@ -703,6 +793,7 @@ class DCGAN(object):
       #  else:
         print("lite_type should be D/G/S")
 
+
   def fgraph_to_lite_v2(self):
 
     #fgraph = tf.graph_util.convert_variables_to_constants(self.sess, self.sess.graph_def)
@@ -712,32 +803,45 @@ class DCGAN(object):
     gd = self.sess.graph_def
 
     for node in gd.node:
-      print("------->",node.name)
+      print("------->",node.name,node.op)
       if node.op == 'RefSwitch':
         node.op = 'Switch'
+        print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
         for index in xrange(len(node.input)):
           if 'moving_' in node.input[index]:
             node.input[index] = node.input[index] + '/read'
       elif node.op == 'AssignSub':
         node.op = 'Sub'
+        print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
         if 'use_locking' in node.attr: del node.attr['use_locking']
       elif node.op == 'AssignAdd':
         node.op = 'Add'
+        print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
         if 'use_locking' in node.attr: del node.attr['use_locking']
       elif node.op == 'AssignMovingAvg':
         node.op = 'MovingAvg'
+        print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
         if 'use_locking' in node.attr: del node.attr['use_locking']
-    
+      elif node.op == 'Assign':
+        node.op = 'Identity'
+        print(">>>>>>>>>>>>>>>>>>>>change to : ",node.name,node.op)
+        if 'use_locking' in node.attr: del node.attr['use_locking']
+        if 'validate_shape' in node.attr: del node.attr['validate_shape']
+        if len(node.input) == 2:
+          # input0: ref: Should be from a Variable node. May be uninitialized.
+          # input1: value: The value to be assigned to the variable.
+          node.input[0] = node.input[1]
+          del node.input[1]
     ######################################################################################
 
-    D_fgraph = tf.graph_util.convert_variables_to_constants(self.sess, gd, output_node_names=['d','d_','G'])
+    D_fgraph = tf.graph_util.convert_variables_to_constants(self.sess, gd, output_node_names=['discriminator/d_lite'])
 
     with tf.io.gfile.GFile('tflite/D_fgraph.pb', mode='wb') as f:
       f.write(D_fgraph.SerializeToString())
       #f.write(D_fgraph)
 
     print("---------------------------------------->start lite D")
-    converter_D = tf.lite.TFLiteConverter.from_frozen_graph('tflite/D_fgraph.pb', ['real_images','z'], ['d','d_','G'],input_shapes={'real_images':[1,64,64,3]})
+    converter_D = tf.lite.TFLiteConverter.from_frozen_graph('tflite/D_fgraph.pb', ['real_images'], ['discriminator/d_lite'],input_shapes={'real_images':[1,64,64,3]})
     #converter_D = tf.lite.TFLiteConverter.from_frozen_graph('tflite/D_fgraph.pb', ['real_images','z'], ['d','d_','G'])
     ######################################################################################
 
@@ -748,5 +852,5 @@ class DCGAN(object):
 
     #D_model = tf.lite.toco_convert(D_fgraph, [self.inputs,self.z], [self.D, self.D_, self.G])   #这里[input], [out]这里分别是输入tensor或者输出tensor的集合,是变量实体不是名字
 
-    with tf.io.gfile.GFile('D_DCGAN.tflite', mode='wb') as f:
+    with tf.io.gfile.GFile('tflite/D_DCGAN.tflite', mode='wb') as f:
       f.write(D_model)

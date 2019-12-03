@@ -1,26 +1,24 @@
-# modify by xuchunling xucl@sari.ac.cn
-# base on tensorflow1.13.1 cuda10.0
-
 import os
 import scipy.misc
 import numpy as np
 import json
 
-#from model import DCGAN
-from model_for_lite import DCGAN
-from utils import pp, visualize, to_json, show_all_variables, expand_path, timestamp
+from model import DCGAN
+from utils import pp, visualize, to_json, show_all_variables, expand_path, timestamp, predict, svm_predict
 
 import tensorflow as tf
 
 flags = tf.app.flags
 flags.DEFINE_integer("epoch", 25, "Epoch to train [25]")
 flags.DEFINE_float("learning_rate", 0.0002, "Learning rate of for adam [0.0002]")
+flags.DEFINE_float("G_rate", 2, "Learning rate of for adam [0.0002]")
 flags.DEFINE_float("beta1", 0.5, "Momentum term of adam [0.5]")
 flags.DEFINE_float("train_size", np.inf, "The size of train images [np.inf]")
 flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
 flags.DEFINE_integer("input_height", 108, "The size of image to use (will be center cropped). [108]")
 flags.DEFINE_integer("input_width", None, "The size of image to use (will be center cropped). If None, same value as input_height [None]")
 flags.DEFINE_integer("output_height", 64, "The size of the output images to produce [64]")
+flags.DEFINE_integer("G_num", 2, "The size of the output images to produce [64]")
 flags.DEFINE_integer("output_width", None, "The size of the output images to produce. If None, same value as output_height [None]")
 flags.DEFINE_string("dataset", "celebA", "The name of dataset [celebA, mnist, lsun]")
 flags.DEFINE_string("input_fname_pattern", "*.jpg", "Glob pattern of filename of input images [*]")
@@ -32,21 +30,24 @@ flags.DEFINE_string("sample_dir", "samples", "Folder (under out_root_dir/out_nam
 flags.DEFINE_boolean("train", False, "True for training, False for testing [False]")
 flags.DEFINE_boolean("crop", False, "True for training, False for testing [False]")
 flags.DEFINE_boolean("visualize", False, "True for visualizing, False for nothing [False]")
+flags.DEFINE_boolean("predict", False, "Trfor visualizing, False for nothing [False]") #modfy by jiangdh
+flags.DEFINE_boolean("svm_predict", False, "Trfor visualizing, False for nothing [False]") #modfy by jiangdh
 flags.DEFINE_boolean("export", False, "True for exporting with new batch size")
-flags.DEFINE_boolean("freeze", False, "True for save frozen graph")
+flags.DEFINE_boolean("freeze", False, "True for exporting with new batch size")
 flags.DEFINE_integer("max_to_keep", 1, "maximum number of checkpoints to keep")
 flags.DEFINE_integer("sample_freq", 200, "sample every this many iterations")
 flags.DEFINE_integer("ckpt_freq", 200, "save checkpoint every this many iterations")
 flags.DEFINE_integer("z_dim", 100, "dimensions of z")
+flags.DEFINE_integer("num", 1, "dimensions of z")
 flags.DEFINE_string("z_dist", "uniform_signed", "'normal01' or 'uniform_unsigned' or uniform_signed")
-flags.DEFINE_boolean("G_img_sum", False, "Save generator image summaries in log")
-flags.DEFINE_string("lite_type", "", "save Discriminator or Generator[D, G]")
-flags.DEFINE_boolean("lite", True, "create tflite file or not [False]")
+flags.DEFINE_boolean("G_img_sum", True, "Save generator image summaries in log")
+flags.DEFINE_string("lite_type", "", "save Discriminator or Generator[D, G]") #modfy by xucl
+flags.DEFINE_boolean("lite", True, "create tflite file or not [False]") #modfy by xucl
+
 #flags.DEFINE_integer("generate_test_images", 100, "Number of images to generate during test. [100]")
 FLAGS = flags.FLAGS
 
 def main(_):
-  #Parallel Python
   pp.pprint(flags.FLAGS.__flags)
   
   # expand user name and environment variables
@@ -62,9 +63,9 @@ def main(_):
 
   # output folders
   if FLAGS.out_name == "":
-      FLAGS.out_name = '{} - {} - {}'.format(timestamp(), FLAGS.data_dir.split('/')[-1], FLAGS.dataset) # penultimate folder of path
+      FLAGS.out_name = '{}-{}-{}'.format(timestamp(), FLAGS.data_dir.split('/')[-1], FLAGS.dataset) # penultimate folder of path
       if FLAGS.train:
-        FLAGS.out_name += ' - x{}.z{}.{}.y{}.b{}'.format(FLAGS.input_width, FLAGS.z_dim, FLAGS.z_dist, FLAGS.output_width, FLAGS.batch_size)
+        FLAGS.out_name += '-x{}.z{}.{}.y{}.b{}'.format(FLAGS.input_height, FLAGS.learning_rate, FLAGS.z_dist, FLAGS.G_num, FLAGS.batch_size)
 
   FLAGS.out_dir = os.path.join(FLAGS.out_dir, FLAGS.out_name)
   FLAGS.checkpoint_dir = os.path.join(FLAGS.out_dir, FLAGS.checkpoint_dir)
@@ -101,8 +102,7 @@ def main(_):
           sample_dir=FLAGS.sample_dir,
           data_dir=FLAGS.data_dir,
           out_dir=FLAGS.out_dir,
-          max_to_keep=FLAGS.max_to_keep,
-          lite_type=FLAGS.lite_type)
+          max_to_keep=FLAGS.max_to_keep)
     else:
       dcgan = DCGAN(
           sess,
@@ -120,8 +120,7 @@ def main(_):
           sample_dir=FLAGS.sample_dir,
           data_dir=FLAGS.data_dir,
           out_dir=FLAGS.out_dir,
-          max_to_keep=FLAGS.max_to_keep,
-          lite_type=FLAGS.lite_type)
+          max_to_keep=FLAGS.max_to_keep)
 
     show_all_variables()
 
@@ -151,13 +150,23 @@ def main(_):
       if FLAGS.visualize:
         OPTION = 1
         visualize(sess, dcgan, FLAGS, OPTION, FLAGS.sample_dir)
+      
+      ##################### modify by jiangdh ###################################  
+      if FLAGS.predict:
+        #OPTION = 1
+        predict(sess, dcgan, FLAGS, dataset_name=FLAGS.dataset, size=FLAGS.batch_size, input_height=FLAGS.input_height, input_width=FLAGS.input_width,output_height=FLAGS.output_height,output_width=FLAGS.output_width, data_dir='./data')        
 
+      if FLAGS.svm_predict:
+        #OPTION = 1
+        svm_predict(sess, dcgan, FLAGS, dataset_name=FLAGS.dataset, size=FLAGS.batch_size, input_height=FLAGS.input_height, input_width=FLAGS.input_width,output_height=FLAGS.output_height,output_width=FLAGS.output_width, data_dir='./data',num=FLAGS.num)
+    
+    ########################## modify by xucl ################################### 
     if FLAGS.lite_type == 'D' or FLAGS.lite_type == 'G' or FLAGS.lite_type == 'S':
       #dcgan.sess_to_lite(FLAGS.lite_type)
       dcgan.fgraph_to_lite(FLAGS.lite_type)
 
     if FLAGS.lite:
       dcgan.fgraph_to_lite_v2()
-
+         
 if __name__ == '__main__':
   tf.app.run()

@@ -14,6 +14,8 @@ import time
 import datetime
 from time import gmtime, strftime
 from six.moves import xrange
+from glob import glob
+import scipy.io as io
 
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -22,7 +24,11 @@ pp = pprint.PrettyPrinter()
 
 get_stddev = lambda x, k_h, k_w: 1/math.sqrt(k_w*k_h*x.get_shape()[-1])
 
-
+def sigmoid_cross_entropy_with_logits(x, y):
+    try:
+        return tf.nn.sigmoid_cross_entropy_with_logits(logits=x, labels=y)
+    except:
+        return tf.nn.sigmoid_cross_entropy_with_logits(logits=x, targets=y)
 def expand_path(path):
   return os.path.expanduser(os.path.expandvars(path))
 
@@ -208,7 +214,8 @@ def visualize(sess, dcgan, config, option, sample_dir='samples'):
         samples = sess.run(dcgan.sampler, feed_dict={dcgan.z: z_sample, dcgan.y: y_one_hot})
       else:
         samples = sess.run(dcgan.sampler, feed_dict={dcgan.z: z_sample})
-
+        
+      print("samples = ", samples ,np.shape(samples))
       save_images(samples, [image_frame_dim, image_frame_dim], os.path.join(sample_dir, 'test_arange_%s.png' % (idx)))
   elif option == 2:
     values = np.arange(0, 1, 1./config.batch_size)
@@ -265,3 +272,209 @@ def image_manifold_size(num_images):
   manifold_w = int(np.ceil(np.sqrt(num_images)))
   assert manifold_h * manifold_w == num_images
   return manifold_h, manifold_w
+
+def predict(sess, dcgan, config, dataset_name='csi_picture1', size=1, input_height=270, input_width=270, output_height=60, output_width=60, data_dir='./data'):
+  data_correct=0
+  data_error=0    
+  if dataset_name == 'mnist':
+    data_X, data_y = load_mnist()
+    c_dim = data_X[0].shape[-1]
+  else:
+    data_path = os.path.join(data_dir, dataset_name, '*.jpg')
+    data = glob(data_path)
+    if len(data) == 0:
+      raise Exception("[!] No data found in '" + data_path + "'")
+    np.random.shuffle(data)
+    imreadImg = imread(data[0])
+    if len(imreadImg.shape) >= 3:  # check if image is a non-grayscale image by checking channel number
+      c_dim = imread(data[0]).shape[-1]
+    else:
+      c_dim = 1
+
+    if len(data) < size:
+      raise Exception("[!] Entire dataset size is less than the configured batch_size")
+
+  if config.dataset == 'mnist':
+    idxs = min(len(data_X), 500) // size
+  else:
+    data = glob(os.path.join(
+      data_dir, dataset_name, '*.jpg'))
+    #np.random.shuffle(data)
+    idxs = min(len(data), 500) // size
+    idx_num = 0;
+  for idx in xrange(0, int(idxs)):
+    
+    if dataset_name == 'mnist':
+      batch_images = data_X[idx * size:(idx + 1) * size]
+      batch_labels = data_y[idx * size:(idx + 1) * size]
+    else:
+      batch_files = data[idx * size:(idx + 1) * size]
+      batch = [
+        get_image(batch_file,
+                  input_height=input_height,
+                  input_width=input_width,
+                  resize_height=output_height,
+                  resize_width=output_width,
+                  crop=False,
+                  grayscale=False) for batch_file in batch_files]
+
+      batch_images = np.array(batch).astype(np.float32)
+
+    if config.dataset == "mnist":
+
+      D_predict, D_logits_predict = sess.run([dcgan.D_1, dcgan.D_logits_1], feed_dict={dcgan.inputs: batch_images, dcgan.y: batch_labels})
+    else:
+      D_predict, D_logits_predict = sess.run([dcgan.D_1, dcgan.D_logits_1], feed_dict={dcgan.inputs: batch_images})
+    #print(D_predict, D_logits_predict)
+    #print(batch_images)
+    d_loss_real1 = tf.reduce_mean(sigmoid_cross_entropy_with_logits(D_logits_predict, tf.ones_like(D_predict)))
+    for i in range(0, size):
+      idx_num = idx_num +1
+      if D_predict[i]  >= 0.5:
+        data_correct = data_correct + 1
+      else :
+        data_error = data_error + 1
+  print("accuracy = ", (data_correct/(int(idxs)*size)),"error = ", (data_error/(int(idxs)*size)),"sample_num=",int(idxs)*size,idx_num,"d_loss_real = ",sess.run(d_loss_real1))
+
+def svm_predict(sess, dcgan, config, dataset_name='csi_picture1', size=1, input_height=270, input_width=270,
+            output_height=60, output_width=60, data_dir='./data', num=1):
+
+  #image_frame_dim = int(math.ceil(config.batch_size ** .5))
+  generate_dir = os.path.join(data_dir, 'generate')
+  generate_dir_h0 = os.path.join(data_dir, 'generate','h0')
+  generate_dir_h1 = os.path.join(data_dir, 'generate','h1')
+  generate_dir_h2 = os.path.join(data_dir, 'generate','h2')
+  generate_dir_train = os.path.join(data_dir, 'generate','train')
+  generate_dir_test = os.path.join(data_dir, 'generate','test')
+  if not os.path.exists(os.path.join(data_dir, 'generate')): os.makedirs(generate_dir)
+  if not os.path.exists(generate_dir_h0): os.makedirs(generate_dir_h0)
+  if not os.path.exists(generate_dir_h1): os.makedirs(generate_dir_h1)
+  if not os.path.exists(generate_dir_h2): os.makedirs(generate_dir_h2)
+  if not os.path.exists(generate_dir_train): os.makedirs(generate_dir_train)
+  if not os.path.exists(generate_dir_test): os.makedirs(generate_dir_test)
+
+  values = np.arange(0, 1, 1./config.batch_size)
+  idd = 0;
+  for idx in xrange(dcgan.z_dim*num):
+    print(" [*] %d" % idx)
+    z_sample = np.random.uniform(-1, 1, size=(config.batch_size , dcgan.z_dim))
+    #for kdx, z in enumerate(z_sample):
+      #z[idx] = values[kdx]
+
+    if config.dataset == "mnist":
+      y = np.random.choice(10, config.batch_size)
+      y_one_hot = np.zeros((config.batch_size, 10))
+      y_one_hot[np.arange(config.batch_size), y] = 1
+
+      samples = sess.run(dcgan.sampler, feed_dict={dcgan.z: z_sample, dcgan.y: y_one_hot})
+    else:
+      samples = sess.run(dcgan.sampler, feed_dict={dcgan.z: z_sample})
+
+
+    D_predict_, D_logits_predict_, h0_, h1_, h2_ = sess.run([dcgan.D_2, dcgan.D_logits_2, dcgan.h0, dcgan.h1, dcgan.h2], feed_dict={dcgan.inputs: samples})
+    for i in range(size):
+
+      io.savemat(os.path.join(generate_dir, 'fake_h0_%s' % (idd)),  {'name': np.squeeze(h0_[i])})
+      io.savemat(os.path.join(generate_dir, 'fake_h1_%s' % (idd)),  {'name': np.squeeze(h1_[i])})
+      io.savemat(os.path.join(generate_dir, 'fake_h2_%s' % (idd)),  {'name': np.squeeze(h2_[i])})
+      io.savemat(os.path.join(generate_dir_h0, 'fake_h0_%s' % (idd)),  {'name': np.squeeze(h0_[i])})
+      io.savemat(os.path.join(generate_dir_h1, 'fake_h1_%s' % (idd)),  {'name': np.squeeze(h1_[i])})
+      io.savemat(os.path.join(generate_dir_h2, 'fake_h2_%s' % (idd)),  {'name': np.squeeze(h2_[i])})
+      #scipy.misc.imsave(os.path.join(generate_dir, 'fake_h0_%s.jpg' % (idd)), np.squeeze(inverse_transform(h0_[i])))
+      #scipy.misc.imsave(os.path.join(generate_dir, 'fake_h1_%s.jpg' % (idd)), np.squeeze(inverse_transform(h1_[i])))
+      #scipy.misc.imsave(os.path.join(generate_dir, 'fake_h2_%s.jpg' % (idd)), np.squeeze(inverse_transform(h2_[i])))
+      idd = idd + 1
+    #save_images(samples, [image_frame_dim, image_frame_dim], os.path.join(sample_dir, 'test_arange_%s.png' % (idx)))
+    print(np.shape(h0_),np.shape(h1_),np.shape(h2_))
+    h0_ = np.reshape(h0_,(h0_.shape[0],-1))
+    h1_ = np.reshape(h1_, (h1_.shape[0], -1))
+    h2_ = np.reshape(h2_, (h2_.shape[0], -1))
+    h = np.hstack((h0_, h1_, h2_))
+    #print(np.shape(h0_),np.shape(h1_),np.shape(h2_))
+    if dataset_name=='train':
+      io.savemat(os.path.join(generate_dir_train, 'fake_%s' % (idx)), {'name': np.squeeze(h)})
+    else:
+      io.savemat(os.path.join(generate_dir_test, 'fake_%s' % (idx)), {'name': np.squeeze(h)})
+  idd = 0
+  data_correct=0
+  data_error=0
+  if dataset_name == 'mnist':
+    data_X, data_y = load_mnist()
+    c_dim = data_X[0].shape[-1]
+  else:
+    data_path = os.path.join(data_dir, dataset_name, '*.jpg')
+    data = glob(data_path)
+    if len(data) == 0:
+      raise Exception("[!] No data found in '" + data_path + "'")
+    np.random.shuffle(data)
+    imreadImg = imread(data[0])
+    if len(imreadImg.shape) >= 3:  # check if image is a non-grayscale image by checking channel number
+      c_dim = imread(data[0]).shape[-1]
+    else:
+      c_dim = 1
+
+    if len(data) < size:
+      raise Exception("[!] Entire dataset size is less than the configured batch_size")
+
+  if config.dataset == 'mnist':
+    idxs = min(len(data_X), num*100) // size
+  else:
+    data = glob(os.path.join(
+      data_dir, dataset_name, '*.jpg'))
+    np.random.shuffle(data)
+    idxs = min(len(data), num*100) // size
+  for idx in xrange(0, int(idxs)):
+
+    if dataset_name == 'mnist':
+      batch_images = data_X[idx * size:(idx + 1) * size]
+      batch_labels = data_y[idx * size:(idx + 1) * size]
+    else:
+      batch_files = data[idx * size:(idx + 1) * size]
+      batch = [
+        get_image(batch_file,
+                  input_height=input_height,
+                  input_width=input_width,
+                  resize_height=output_height,
+                  resize_width=output_width,
+                  crop=False,
+                  grayscale=False) for batch_file in batch_files]
+
+      batch_images = np.array(batch).astype(np.float32)
+
+    if config.dataset == "mnist":
+
+      D_predict, D_logits_predict, h0, h1, h2 = sess.run([dcgan.D_2, dcgan.D_logits_2, dcgan.h0, dcgan.h1, dcgan.h2],
+                                             feed_dict={dcgan.inputs: batch_images, dcgan.y: batch_labels})
+    else:
+      D_predict, D_logits_predict, h0, h1, h2 = sess.run([dcgan.D_2, dcgan.D_logits_2, dcgan.h0, dcgan.h1, dcgan.h2], feed_dict={dcgan.inputs: batch_images})
+
+    for i in range(size):
+      # print(D_predict, D_logits_predict)
+      #if not os.path.exists(FLAGS.checkpoint_dir): os.makedirs(FLAGS.checkpoint_dir)
+      io.savemat(os.path.join(generate_dir, 'real_h0_%s' % (idd)),  {'name': np.squeeze(h0[i])})
+      io.savemat(os.path.join(generate_dir, 'real_h1_%s' % (idd)),  {'name': np.squeeze(h1[i])})
+      io.savemat(os.path.join(generate_dir, 'real_h2_%s' % (idd)),  {'name': np.squeeze(h2[i])})
+      io.savemat(os.path.join(generate_dir_h0, 'real_h0_%s' % (idd)),  {'name': np.squeeze(h0[i])})
+      io.savemat(os.path.join(generate_dir_h1, 'real_h1_%s' % (idd)),  {'name': np.squeeze(h1[i])})
+      io.savemat(os.path.join(generate_dir_h2, 'real_h2_%s' % (idd)),  {'name': np.squeeze(h2[i])})
+      #scipy.misc.imsave(os.path.join(generate_dir, 'real_h0%s.jpg' % (idd)), np.squeeze(inverse_transform(h0[i])))
+      #scipy.misc.imsave(os.path.join(generate_dir, 'real_h1%s.jpg' % (idd)), np.squeeze(inverse_transform(h1[i])))
+      #scipy.misc.imsave(os.path.join(generate_dir, 'real_h2%s.jpg' % (idd)), np.squeeze(inverse_transform(h2[i])))
+      idd = idd + 1
+    print(np.shape(h0),np.shape(h1),np.shape(h2))
+    h0 = np.reshape(h0,(h0.shape[0],-1))
+    h1 = np.reshape(h1, (h1.shape[0], -1))
+    h2 = np.reshape(h2, (h2.shape[0], -1))
+    h = np.hstack((h0, h1, h2))
+    #print(np.shape(h0),np.shape(h1),np.shape(h2))
+    if dataset_name=='train':
+      io.savemat(os.path.join(generate_dir_train, 'real_%s' % (idx)), {'name': np.squeeze(h)})
+    else:
+      io.savemat(os.path.join(generate_dir_test, 'real_%s' % (idx)), {'name': np.squeeze(h)})
+    for i in range(0, size):
+
+      if D_predict[i] >= 0.5:
+        data_correct = data_correct + 1
+      else:
+        data_error = data_error + 1
+  print("accuracy = ", (data_correct / (int(idxs) * size)),"error = ", (data_error/(int(idxs)*size)))
