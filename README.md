@@ -1,3 +1,16 @@
+# Modify by Sari NewMedia
+
+Add a API to transform model to "*.pb" and "*.tflite",these files were save in directories "tflite", and change number of generator, command like(this API only test on tensorflow 1.13.1 and cuda 10.0):
+
+
+    $ python main.py --dataset celebA --input_height=108 --train_size=1000 --train --crop --epoch=1 --lite --batch_size=1 --learning_rate=0.00005 --G_num=6 
+ 
+we add parameter:
+
+"--lite" transeform graph to *.tflite
+
+"--G_num" to change generator number 
+
 # DCGAN in Tensorflow
 
 Tensorflow implementation of [Deep Convolutional Generative Adversarial Networks](http://arxiv.org/abs/1511.06434) which is a stabilize Generative Adversarial Networks. The referenced torch code can be found [here](https://github.com/soumith/dcgan.torch).
