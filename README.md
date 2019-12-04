@@ -11,7 +11,7 @@ we add parameter:
 
 "--G_num" to change generator number 
 
-"--G_rate" generator learning rate as how much as learningrate
+"--G_rate" generator learning rate as how much as learning rate
 
 # DCGAN in Tensorflow
 
