@@ -65,7 +65,7 @@ def main(_):
   if FLAGS.out_name == "":
       FLAGS.out_name = '{}-{}-{}'.format(timestamp(), FLAGS.data_dir.split('/')[-1], FLAGS.dataset) # penultimate folder of path
       if FLAGS.train:
-        FLAGS.out_name += '-x{}.z{}.{}.y{}.b{}'.format(FLAGS.input_height, FLAGS.learning_rate, FLAGS.z_dist, FLAGS.G_num, FLAGS.batch_size)
+        FLAGS.out_name += '-x{}.z{}.{}.y{}.b{}'.format(FLAGS.input_height, FLAGS.learning_rate, FLAGS.z_dist, FLAGS.G_num, FLAGS.batch_size) # modify bu jiangdh, add learning_rate
 
   FLAGS.out_dir = os.path.join(FLAGS.out_dir, FLAGS.out_name)
   FLAGS.checkpoint_dir = os.path.join(FLAGS.out_dir, FLAGS.checkpoint_dir)
