@@ -38,7 +38,7 @@ flags.DEFINE_integer("max_to_keep", 1, "maximum number of checkpoints to keep")
 flags.DEFINE_integer("sample_freq", 200, "sample every this many iterations")
 flags.DEFINE_integer("ckpt_freq", 200, "save checkpoint every this many iterations")
 flags.DEFINE_integer("z_dim", 100, "dimensions of z")
-flags.DEFINE_integer("num", 1, "dimensions of z")
+flags.DEFINE_integer("num", 1, "forget [1]")#modify by jiangdh
 flags.DEFINE_string("z_dist", "uniform_signed", "'normal01' or 'uniform_unsigned' or uniform_signed")
 flags.DEFINE_boolean("G_img_sum", True, "Save generator image summaries in log")
 flags.DEFINE_string("lite_type", "", "save Discriminator or Generator[D, G]") #modfy by xucl
