@@ -18,7 +18,7 @@ flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
 flags.DEFINE_integer("input_height", 108, "The size of image to use (will be center cropped). [108]")
 flags.DEFINE_integer("input_width", None, "The size of image to use (will be center cropped). If None, same value as input_height [None]")
 flags.DEFINE_integer("output_height", 64, "The size of the output images to produce [64]")
-flags.DEFINE_integer("G_num", 2, "The size of the output images to produce [64]")
+flags.DEFINE_integer("G_num", 2, "number of generator [2]") #modfy by jiangdh
 flags.DEFINE_integer("output_width", None, "The size of the output images to produce. If None, same value as output_height [None]")
 flags.DEFINE_string("dataset", "celebA", "The name of dataset [celebA, mnist, lsun]")
 flags.DEFINE_string("input_fname_pattern", "*.jpg", "Glob pattern of filename of input images [*]")
@@ -33,7 +33,7 @@ flags.DEFINE_boolean("visualize", False, "True for visualizing, False for nothin
 flags.DEFINE_boolean("predict", False, "Trfor visualizing, False for nothing [False]") #modfy by jiangdh
 flags.DEFINE_boolean("svm_predict", False, "Trfor visualizing, False for nothing [False]") #modfy by jiangdh
 flags.DEFINE_boolean("export", False, "True for exporting with new batch size")
-flags.DEFINE_boolean("freeze", False, "True for exporting with new batch size")
+flags.DEFINE_boolean("freeze", False, "True for save frozen graph")
 flags.DEFINE_integer("max_to_keep", 1, "maximum number of checkpoints to keep")
 flags.DEFINE_integer("sample_freq", 200, "sample every this many iterations")
 flags.DEFINE_integer("ckpt_freq", 200, "save checkpoint every this many iterations")
